@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式地图框选工具 - 坐标与面积计算器</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+            z-index: 1;
+        }
+        
+        .toolbar {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 12px 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            max-width: 90%;
+            flex-wrap: wrap;
+        }
+        
+        .toolbar h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-right: 10px;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .unit-selector {
+            display: flex;
+            gap: 4px;
+            background: #f3f4f6;
+            border-radius: 8px;
+            padding: 4px;
+        }
+        
+        .unit-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #6b7280;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .unit-btn.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .result-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            width: 380px;
+            max-width: calc(100% - 40px);
+        }
+        
+        .area-display {
+            margin-bottom: 20px;
+        }
+        
+        .area-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 4px;
+        }
+        
+        .area-unit {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        
+        .coordinates-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 15px;
+            padding-right: 5px;
+        }
+        
+        .coordinate-item {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+            color: #4b5563;
+            padding: 4px 0;
+            border-bottom: 1px solid #f3f4f6;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .coordinate-item:last-child {
+            border-bottom: none;
+        }
+        
+        .copy-btn {
+            width: 100%;
+            margin-top: 15px;
+            padding: 10px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .copy-btn:hover {
+            background: #059669;
+            transform: translateY(-2px);
+        }
+        
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 2000;
+            animation: slideIn 0.3s ease, slideOut 0.3s ease 2.7s forwards;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .toolbar {
+                top: 10px;
+                padding: 10px 15px;
+                flex-wrap: wrap;
+            }
+            
+            .result-panel {
+                width: calc(100% - 40px);
+                padding: 15px;
+            }
+            
+            .area-value {
+                font-size: 24px;
+            }
+        }
+        
+        .instructions {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 12px 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            font-size: 14px;
+            color: #4b5563;
+            text-align: center;
+            max-width: 90%;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="toolbar">
+        <h1>🗺️ 地图框选工具</h1>
+        <button class="btn btn-primary" id="drawBtn">
+            <span>绘制区域</span>
+        </button>
+        <button class="btn btn-secondary" id="clearBtn">
+            <span>清除绘制</span>
+        </button>
+        <button class="btn btn-secondary" id="resetBtn">
+            <span>重置视图</span>
+        </button>
+        <div class="unit-selector">
+            <button class="unit-btn active" data-unit="m²">㎡</button>
+            <button class="unit-btn" data-unit="km²">km²</button>
+            <button class="unit-btn" data-unit="亩">亩</button>
+        </div>
+    </div>
+    
+    <div class="instructions" id="instructions">
+        👆 点击"绘制区域"按钮，然后在地图上点击创建多边形
+    </div>
+    
+    <div class="result-panel">
+        <div class="area-display">
+            <div class="area-value" id="areaValue">0.00</div>
+            <div class="area-unit">
+                <span id="areaUnit">m²</span>
+            </div>
+        </div>
+        
+        <div class="coordinates-list" id="coordinatesList">
+            <div class="coordinate-item">尚未绘制区域</div>
+        </div>
+        
+        <button class="copy-btn" id="copyBtn">
+            📋 复制坐标数据
+        </button>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    
+    <script>
+        // 初始化地图
+        const map = L.map('map').setView([39.9042, 116.4074], 5); // 北京为中心
+        
+        // 添加高德地图底图
+        L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+            subdomains: ['1', '2', '3', '4'],
+            attribution: '© 高德地图'
+        }).addTo(map);
+        
+        // 绘制图层
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+        
+        // 绘制控制
+        const drawControl = new L.Control.Draw({
+            draw: {
+                polygon: {
+                    allowIntersection: false,
+                    drawError: {
+                        color: '#e74c3c',
+                        timeout: 1000
+                    },
+                    shapeOptions: {
+                        color: '#667eea',
+                        fillColor: '#667eea',
+                        fillOpacity: 0.3,
+                        weight: 3
+                    }
+                },
+                polyline: false,
+                rectangle: false,
+                circle: false,
+                marker: false,
+                circlemarker: false
+            },
+            edit: {
+                featureGroup: drawnItems
+            }
+        });
+        
+        map.addControl(drawControl);
+        
+        // 状态变量
+        let currentArea = 0;
+        let currentUnit = 'm²';
+        let currentCoordinates = [];
+        
+        // DOM元素
+        const drawBtn = document.getElementById('drawBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const areaValue = document.getElementById('areaValue');
+        const areaUnit = document.getElementById('areaUnit');
+        const coordinatesList = document.getElementById('coordinatesList');
+        const copyBtn = document.getElementById('copyBtn');
+        const unitButtons = document.querySelectorAll('.unit-btn');
+        const instructions = document.getElementById('instructions');
+        
+        // 开始绘制
+        drawBtn.addEventListener('click', () => {
+            new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
+            instructions.textContent = '🎯 在地图上点击创建多边形顶点，双击或点击起点完成绘制';
+        });
+        
+        // 清除绘制
+        clearBtn.addEventListener('click', () => {
+            drawnItems.clearLayers();
+            currentArea = 0;
+            currentCoordinates = [];
+            updateAreaDisplay();
+            updateCoordinatesDisplay();
+            instructions.textContent = '👆 点击"绘制区域"按钮，然后在地图上点击创建多边形';
+        });
+        
+        // 重置视图
+        resetBtn.addEventListener('click', () => {
+            map.setView([39.9042, 116.4074], 5);
+        });
+        
+        // 单位切换
+        unitButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                unitButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentUnit = btn.dataset.unit;
+                updateAreaDisplay();
+            });
+        });
+        
+        // 复制坐标
+        copyBtn.addEventListener('click', () => {
+            if (currentCoordinates.length === 0) {
+                showToast('请先绘制区域');
+                return;
+            }
+            
+            const coordinatesText = currentCoordinates.map((coord, index) => 
+                `顶点 ${index + 1}: ${coord.lng.toFixed(6)}, ${coord.lat.toFixed(6)}`
+            ).join('\n');
+            
+            const fullText = `所选区域坐标（共${currentCoordinates.length}个顶点）:\n${coordinatesText}\n\n面积: ${formatArea(currentArea, currentUnit)} ${currentUnit}`;
+            
+            navigator.clipboard.writeText(fullText).then(() => {
+                showToast('坐标数据已复制到剪贴板');
+            }).catch(err => {
+                console.error('复制失败:', err);
+                showToast('复制失败，请手动复制');
+            });
+        });
+        
+        // 地图绘制完成事件
+        map.on(L.Draw.Event.CREATED, function(event) {
+            const layer = event.layer;
+            drawnItems.clearLayers();
+            drawnItems.addLayer(layer);
+            
+            // 计算面积和坐标
+            const geoJSON = layer.toGeoJSON();
+            const area = turf.area(geoJSON); // 平方米
+            
+            currentArea = area;
+            currentCoordinates = geoJSON.geometry.coordinates[0].map(coord => ({
+                lng: coord[0],
+                lat: coord[1]
+            }));
+            
+            updateAreaDisplay();
+            updateCoordinatesDisplay();
+            instructions.textContent = '✅ 区域绘制完成！可以拖拽顶点调整形状，或点击"清除绘制"重新开始';
+        });
+        
+        // 地图编辑事件
+        map.on(L.Draw.Event.EDITED, function(event) {
+            const layers = event.layers;
+            layers.eachLayer(function(layer) {
+                const geoJSON = layer.toGeoJSON();
+                const area = turf.area(geoJSON);
+                
+                currentArea = area;
+                currentCoordinates = geoJSON.geometry.coordinates[0].map(coord => ({
+                    lng: coord[0],
+                    lat: coord[1]
+                }));
+                
+                updateAreaDisplay();
+                updateCoordinatesDisplay();
+            });
+        });
+        
+        // 更新面积显示
+        function updateAreaDisplay() {
+            const formattedArea = formatArea(currentArea, currentUnit);
+            areaValue.textContent = formattedArea;
+            areaUnit.textContent = currentUnit;
+        }
+        
+        // 格式化面积
+        function formatArea(areaInSquareMeters, unit) {
+            switch(unit) {
+                case 'km²':
+                    return (areaInSquareMeters / 1000000).toFixed(6);
+                case '亩':
+                    return (areaInSquareMeters * 0.0015).toFixed(4);
+                case 'm²':
+                default:
+                    return areaInSquareMeters.toFixed(2);
+            }
+        }
+        
+        // 更新坐标显示
+        function updateCoordinatesDisplay() {
+            coordinatesList.innerHTML = '';
+            
+            if (currentCoordinates.length === 0) {
+                coordinatesList.innerHTML = '<div class="coordinate-item">尚未绘制区域</div>';
+                return;
+            }
+            
+            currentCoordinates.forEach((coord, index) => {
+                const div = document.createElement('div');
+                div.className = 'coordinate-item';
+                div.innerHTML = `
+                    <span>顶点 ${index + 1}</span>
+                    <span>${coord.lng.toFixed(6)}, ${coord.lat.toFixed(6)}</span>
+                `;
+                coordinatesList.appendChild(div);
+            });
+        }
+        
+        // 显示提示消息
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+        
+        // 从sessionStorage恢复数据
+        function restoreFromStorage() {
+            const savedData = sessionStorage.getItem('mapAreaSelector');
+            if (savedData) {
+                try {
+                    const data = JSON.parse(savedData);
+                    
+                    // 恢复地图视图
+                    if (data.view) {
+                        map.setView([data.view.lat, data.view.lng], data.view.zoom);
+                    }
+                    
+                    // 恢复多边形
+                    if (data.polygon) {
+                        const layer = L.geoJSON(data.polygon, {
+                            style: {
+                                color: '#667eea',
+                                fillColor: '#667eea',
+                                fillOpacity: 0.3,
+                                weight: 3
+                            }
+                        });
+                        drawnItems.addLayer(layer);
+                        
+                        // 计算面积和坐标
+                        const area = turf.area(data.polygon);
+                        currentArea = area;
+                        currentCoordinates = data.polygon.geometry.coordinates[0].map(coord => ({
+                            lng: coord[0],
+                            lat: coord[1]
+                        }));
+                        
+                        updateAreaDisplay();
+                        updateCoordinatesDisplay();
+                    }
+                    
+                    // 恢复单位
+                    if (data.unit) {
+                        currentUnit = data.unit;
+                        unitButtons.forEach(btn => {
+                            btn.classList.toggle('active', btn.dataset.unit === data.unit);
+                        });
+                        updateAreaDisplay();
+                    }
+                } catch(e) {
+                    console.error('恢复数据失败:', e);
+                }
+            }
+        }
+        
+        // 保存数据到sessionStorage
+        function saveToStorage() {
+            const data = {
+                view: {
+                    lat: map.getCenter().lat,
+                    lng: map.getCenter().lng,
+                    zoom: map.getZoom()
+                },
+                polygon: drawnItems.getLayers().length > 0 ? 
+                    drawnItems.toGeoJSON().features[0] : null,
+                unit: currentUnit,
+                area: currentArea
+            };
+            
+            sessionStorage.setItem('mapAreaSelector', JSON.stringify(data));
+        }
+        
+        // 定期保存数据
+        setInterval(saveToStorage, 2000);
+        
+        // 页面加载时恢复数据
+        window.addEventListener('load', restoreFromStorage);
+        
+        // 页面卸载时保存数据
+        window.addEventListener('beforeunload', saveToStorage);
+    </script>
+</body>
+</html>
